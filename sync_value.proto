@@ -12,9 +12,13 @@ message Empty {}
 message ValueRequest {
   int32 key = 1;
   int32 value = 2;
+  int32 type = 3;
+  int32 mapid = 4;
 }
 
 message ValueResponse {
   int32 key = 1;
   int32 value = 2;
+  int32 type = 3;
+  int32 mapid = 4;
 }

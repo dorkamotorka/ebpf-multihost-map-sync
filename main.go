@@ -19,12 +19,12 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 )
 
-var clients []SyncServiceClient
-
 type Node struct {
 	UnimplementedSyncServiceServer
 	value int32
 	key  int32
+	_type  int32
+	mapid  int32
 	mu    sync.Mutex
 }
 
@@ -32,16 +32,11 @@ func (n *Node) SetValue(ctx context.Context, in *ValueRequest) (*Empty, error) {
 	n.mu.Lock()
 	n.value = in.GetValue()
 	n.key = in.GetKey()
-	log.Printf("Client set key %d to value %d", n.key, n.value)
+	n._type = in.GetType()
+	n.mapid = in.GetMapid()
+	log.Printf("Client %s key %d to value %d on eBPF Map %d", MapUpdater(n._type).String(), n.key, n.value, n.mapid)
 	n.mu.Unlock()
 
-	// Broadcast the new value to other nodes
-	for _, client := range clients {
-		_, err := client.SetValue(context.Background(), &ValueRequest{Key: n.key, Value: n.value})
-		if err != nil {
-			log.Printf("could not set value on client: %v", err)
-		}
-	}
 	return &Empty{}, nil
 }
 
@@ -129,11 +124,11 @@ func main() {
 
 		ctx, _ := context.WithTimeout(context.Background(), time.Second)
 
-		r, err := client.SetValue(ctx, &ValueRequest{Key: int32(Event.Key), Value: int32(Event.Value)})
+		_, err = client.SetValue(ctx, &ValueRequest{Key: int32(Event.Key), Value: int32(Event.Value), Type: int32(Event.UpdateType), Mapid: int32(Event.MapID)})
 		if err != nil {
 			log.Printf("Could not set value: %v", err)
 		} else {
-			log.Printf("Successfully set Value: %v", r)
+			log.Printf("Successfully send sync message")
 		}
 	}
 }
