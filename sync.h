@@ -3,13 +3,10 @@
 #define BPF_NAME_LEN 16U
 #define MAX_EVENTS  (128)
 
+// Order matters!
 enum map_updater {
-    UPDATER_USERMODE,
-    UPDATER_SYSCALL_GET,
-    UPDATER_SYSCALL_UPDATE,
-    UPDATER_SYSCALL_DELETE,
-    UPDATER_KERNEL_UPDATE,
-    UPDATER_KERNEL_DELETE,
+    MAP_UPDATE,
+    MAP_DELETE
 } map_updater;
 
 struct MapData {

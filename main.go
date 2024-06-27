@@ -4,33 +4,12 @@ package main
 
 import (
 	"log"
-	"time"
 	"unsafe"
 
-	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 )
-
-func mapDemo(syncObjs *syncObjects) {
-	time.Sleep(1 * time.Second)
-	key := uint32(1)
-	value := uint32(42)
-	log.Println("--------------------")
-	if err := syncObjs.HashMap.Update(key, value, ebpf.UpdateAny); err != nil {
-		log.Fatalf("error updating map: %v", err)
-	} else {
-		log.Printf("Map entry updated")
-	}
-	log.Println("--------------------")
-	if err := syncObjs.HashMap.Delete(key); err != nil {
-		log.Fatalf("error deleting map: %v", err)
-	} else {
-		log.Printf("Map entry deleted")
-	}
-	log.Println("--------------------")
-}
 
 func main() {
 	// Allow the current process to lock memory for eBPF resources.
@@ -61,8 +40,6 @@ func main() {
 	}
 	defer fDelete.Close()
 
-	//go mapDemo(&syncObjs)
-
 	rd, err := ringbuf.NewReader(syncObjs.MapEvents)
 	if err != nil {
 		panic(err)
@@ -76,11 +53,12 @@ func main() {
 		}
 
 		Event := (*MapData)(unsafe.Pointer(&record.RawSample[0]))
-		//log.Printf("%+v", Event)
 		log.Printf("Map ID: %d", Event.MapID)
-		log.Printf("Name: %s", ConvertValueToString(Event.Name))
+		log.Printf("Name: %s", string(Event.Name[:]))
 		log.Printf("PID: %d", Event.PID)
 		log.Printf("Updater: %s", Event.Updater.String())
+		log.Printf("Key Size: %d", Event.KeySize)
+		log.Printf("Value Size: %d", Event.ValueSize)
 		log.Println("=====================================")
 	}
 }
