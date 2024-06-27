@@ -12,6 +12,7 @@ import (
 	"flag"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -118,16 +119,14 @@ func main() {
 		log.Printf("Value Size: %d", Event.ValueSize)
 		log.Println("=====================================")
 
-		conn, err := grpc.NewClient(address)
+		conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Fatalf("Did not connect: %v", err)
 			continue
 		}
 
 		client := NewSyncServiceClient(conn)
-		clients = append(clients, client)
 
-		// Optionally, get the current value from the server
 		ctx, _ := context.WithTimeout(context.Background(), time.Second)
 
 		r, err := client.SetValue(ctx, &ValueRequest{Key: int32(Event.Key), Value: int32(Event.Value)})
