@@ -61,13 +61,7 @@ func main() {
 	}
 	defer fDelete.Close()
 
-	w, err := link.Tracepoint("syscalls", "sys_enter_bpf", syncObjs.BpfProgSyscall, nil)
-	if err != nil {
-		log.Fatal("link sys_enter_bpf tracepoint")
-	}
-	defer w.Close()
-
-	go mapDemo(&syncObjs)
+	//go mapDemo(&syncObjs)
 
 	rd, err := ringbuf.NewReader(syncObjs.MapEvents)
 	if err != nil {
