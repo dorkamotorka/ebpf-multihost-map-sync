@@ -7,6 +7,13 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
+struct {
+  int (*type)[BPF_MAP_TYPE_ARRAY];
+  int (*max_entries)[1];
+  __u32 *key;
+  struct Config *value;
+} map_config SEC(".maps");
+
 /* BPF ringbuf map */
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -25,6 +32,12 @@ struct {
 static void __always_inline
 log_map_update(struct bpf_map* updated_map, unsigned int *pKey, unsigned int *pValue, enum map_updater update_type)
 { 
+  // This prevents the proxy from proxying itself
+  __u32 key = 0;
+  struct Config *conf = bpf_map_lookup_elem(&map_config, &key);
+  if (!conf) return;
+  if ((bpf_get_current_pid_tgid() >> 32) == conf->host_pid) return;
+
   // Get basic info about the map
   uint32_t map_id = MEM_READ(updated_map->id);
   uint32_t key_size = MEM_READ(updated_map->key_size);

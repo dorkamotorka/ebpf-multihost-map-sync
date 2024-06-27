@@ -1,8 +1,9 @@
 package main
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 sync sync.c
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 -type Config sync sync.c
 
 import (
+	"os"
 	"context"
 	"flag"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+	"fmt"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -73,9 +75,9 @@ func startServer(node *Node, port string) {
 
 func main() {
 	serverIP := flag.String("ip", "localhost", "Server IP address")
-	serverPort := flag.String("port", "50051", "Server port")
+	serverPort := flag.Int("port", 50051, "Server port")
 	flag.Parse()
-	address := *serverIP + ":" + *serverPort
+	address := *serverIP + ":" + fmt.Sprint(*serverPort)
 
 	// Allow the current process to lock memory for eBPF resources.
 	if err := rlimit.RemoveMemlock(); err != nil {
@@ -104,6 +106,16 @@ func main() {
 		log.Fatalf("opening htab_map_delete_elem kprobe: %s", err)
 	}
 	defer fDelete.Close()
+
+	var key uint32 = 0
+	config := syncConfig{
+		HostPort: uint16(*serverPort),
+		HostPid: uint64(os.Getpid()),
+	}
+	err = syncObjs.syncMaps.MapConfig.Update(&key, &config, ebpf.UpdateAny)
+	if err != nil {
+		log.Fatalf("Failed to update proxyMaps map: %v", err)
+	}
 
 	rd, err := ringbuf.NewReader(syncObjs.MapEvents)
 	if err != nil {
