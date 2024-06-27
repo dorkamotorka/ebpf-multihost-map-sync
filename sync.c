@@ -23,7 +23,7 @@ struct {
 #define MEM_READ(P) ({typeof(P) val = 0; bpf_probe_read(&val, sizeof(val), &P); val;})
 
 static void __always_inline
-log_map_update(struct bpf_map* updated_map, char *pKey, char *pValue, enum map_updater update_type)
+log_map_update(struct bpf_map* updated_map, unsigned int *pKey, unsigned int *pValue, enum map_updater update_type)
 { 
   // Get basic info about the map
   uint32_t map_id = MEM_READ(updated_map->id);
@@ -34,15 +34,16 @@ log_map_update(struct bpf_map* updated_map, char *pKey, char *pValue, enum map_u
   struct MapData out_data;
   __builtin_memset(&out_data, 0, sizeof(out_data));
 
-  // Parse the map name
   bpf_probe_read_str(out_data.name, BPF_NAME_LEN, updated_map->name);
-
-  // Set basic data
+  bpf_probe_read(&out_data.key, sizeof(*pKey), pKey);
   out_data.key_size = key_size;
-  out_data.value_size = value_size;
+  if (pValue != 0) {
+    bpf_probe_read(&out_data.value, sizeof(*pValue), pValue);
+    out_data.value_size = value_size;
+  }
   out_data.map_id = map_id;
   out_data.pid = (unsigned int)(bpf_get_current_pid_tgid() >> 32);
-  out_data.updater = update_type;
+  out_data.update_type = update_type;
 
   // Write data to be processed in userspace
   bpf_ringbuf_output(&map_events, &out_data, sizeof(out_data), 0);

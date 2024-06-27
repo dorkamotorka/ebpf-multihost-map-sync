@@ -56,8 +56,10 @@ func main() {
 		log.Printf("Map ID: %d", Event.MapID)
 		log.Printf("Name: %s", string(Event.Name[:]))
 		log.Printf("PID: %d", Event.PID)
-		log.Printf("Updater: %s", Event.Updater.String())
+		log.Printf("Update Type: %s", Event.UpdateType.String())
+		log.Printf("Key: %d", Event.Key)
 		log.Printf("Key Size: %d", Event.KeySize)
+		log.Printf("Value: %d", Event.Value)
 		log.Printf("Value Size: %d", Event.ValueSize)
 		log.Println("=====================================")
 	}

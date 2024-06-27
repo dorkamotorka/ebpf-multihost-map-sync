@@ -1,5 +1,3 @@
-#define MAX_KEY_SIZE 64
-#define MAX_VALUE_SIZE 280
 #define BPF_NAME_LEN 16U
 #define MAX_EVENTS  (128)
 
@@ -12,12 +10,12 @@ enum map_updater {
 struct MapData {
     unsigned int map_id;
     char name[BPF_NAME_LEN];
-    enum map_updater updater;
+    enum map_updater update_type;
     unsigned int pid;
     unsigned int key_size;
     unsigned int value_size;
-    char key[MAX_KEY_SIZE];
-    char value[MAX_VALUE_SIZE];
+    unsigned int key;
+    unsigned int value;
 };
 
 // The bpf syscall has 3 arguments:
