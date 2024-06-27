@@ -5,13 +5,67 @@ package main
 import (
 	"log"
 	"unsafe"
+	"sync"
+	"context"
+	"net"
+	"time"
+	"flag"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 )
 
+var clients []SyncServiceClient
+
+type Node struct {
+	UnimplementedSyncServiceServer
+	value int32
+	key  int32
+	mu    sync.Mutex
+}
+
+func (n *Node) SetValue(ctx context.Context, in *ValueRequest) (*Empty, error) {
+	n.mu.Lock()
+	n.value = in.GetValue()
+	n.key = in.GetKey()
+	log.Printf("Client set key %d to value %d", n.key, n.value)
+	n.mu.Unlock()
+
+	// Broadcast the new value to other nodes
+	for _, client := range clients {
+		_, err := client.SetValue(context.Background(), &ValueRequest{Key: n.key, Value: n.value})
+		if err != nil {
+			log.Printf("could not set value on client: %v", err)
+		}
+	}
+	return &Empty{}, nil
+}
+
+func startServer(node *Node, port string) {
+	l, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer()
+	RegisterSyncServiceServer(s, node)
+
+	log.Printf("Server is running at %s", port)
+	if err := s.Serve(l); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
 func main() {
+	serverIP := flag.String("ip", "localhost", "Server IP address")
+	serverPort := flag.String("port", "50051", "Server port")
+	flag.Parse()
+	address := *serverIP + ":" + *serverPort
+
 	// Allow the current process to lock memory for eBPF resources.
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal(err)
@@ -46,6 +100,8 @@ func main() {
 	}
 	defer rd.Close()
 
+	go startServer(&Node{}, ":50051")
+
 	for {
 		record, err := rd.Read()
 		if err != nil {
@@ -62,5 +118,22 @@ func main() {
 		log.Printf("Value: %d", Event.Value)
 		log.Printf("Value Size: %d", Event.ValueSize)
 		log.Println("=====================================")
+
+		conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatalf("Did not connect: %v", err)
+			continue
+		}
+
+		client := NewSyncServiceClient(conn)
+
+		ctx, _ := context.WithTimeout(context.Background(), time.Second)
+
+		r, err := client.SetValue(ctx, &ValueRequest{Key: int32(Event.Key), Value: int32(Event.Value)})
+		if err != nil {
+			log.Printf("Could not set value: %v", err)
+		} else {
+			log.Printf("Successfully set Value: %v", r)
+		}
 	}
 }
