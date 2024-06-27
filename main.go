@@ -3,17 +3,18 @@ package main
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 sync sync.c
 
 import (
-	"log"
-	"unsafe"
-	"sync"
 	"context"
-	"net"
-	"time"
 	"flag"
+	"log"
+	"net"
+	"sync"
+	"time"
+	"unsafe"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
@@ -30,11 +31,26 @@ type Node struct {
 
 func (n *Node) SetValue(ctx context.Context, in *ValueRequest) (*Empty, error) {
 	n.mu.Lock()
+	
 	n.value = in.GetValue()
 	n.key = in.GetKey()
 	n._type = in.GetType()
 	n.mapid = in.GetMapid()
 	log.Printf("Client %s key %d to value %d on eBPF Map %d", MapUpdater(n._type).String(), n.key, n.value, n.mapid)
+
+	// Load pre-compiled programs and maps into the kernel.
+	syncObjs := syncObjects{}
+	if err := loadSyncObjects(&syncObjs, nil); err != nil {
+		log.Fatal(err)
+	}
+	defer syncObjs.Close()
+	
+	if MapUpdater(n._type).String() == "UPDATE" {
+		syncObjs.HashMap.Update(n.key, n.value, ebpf.UpdateAny)
+	} else if MapUpdater(n._type).String() == "DELETE" {
+		syncObjs.HashMap.Delete(n.key)
+	}
+
 	n.mu.Unlock()
 
 	return &Empty{}, nil
