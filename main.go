@@ -31,6 +31,7 @@ func (n *Node) SetValue(ctx context.Context, in *ValueRequest) (*Empty, error) {
 	key := in.GetKey()
 	_type := in.GetType()
 	
+	// According to https://man7.org/linux/man-pages/man2/bpf.2.html, these calls are atomic!
 	if MapUpdater(_type).String() == "UPDATE" {
 		n.syncObjs.HashMap.Update(key, value, ebpf.UpdateAny)
 		log.Printf("Client updated key %d to value %d", key, value)
