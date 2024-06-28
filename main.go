@@ -8,7 +8,6 @@ import (
 	"flag"
 	"log"
 	"net"
-	"sync"
 	"time"
 	"unsafe"
 	"fmt"
@@ -24,36 +23,21 @@ import (
 
 type Node struct {
 	UnimplementedSyncServiceServer
-	value int32
-	key  int32
-	_type  int32
-	mapid  int32
-	mu    sync.Mutex
+	syncObjs syncObjects
 }
 
 func (n *Node) SetValue(ctx context.Context, in *ValueRequest) (*Empty, error) {
-	n.mu.Lock()
+	value := in.GetValue()
+	key := in.GetKey()
+	_type := in.GetType()
 	
-	n.value = in.GetValue()
-	n.key = in.GetKey()
-	n._type = in.GetType()
-	n.mapid = in.GetMapid()
-	log.Printf("Client %s key %d to value %d on eBPF Map %d", MapUpdater(n._type).String(), n.key, n.value, n.mapid)
-
-	// Load pre-compiled programs and maps into the kernel.
-	syncObjs := syncObjects{}
-	if err := loadSyncObjects(&syncObjs, nil); err != nil {
-		log.Fatal(err)
+	if MapUpdater(_type).String() == "UPDATE" {
+		n.syncObjs.HashMap.Update(key, value, ebpf.UpdateAny)
+		log.Printf("Client updated key %d to value %d", key, value)
+	} else if MapUpdater(_type).String() == "DELETE" {
+		n.syncObjs.HashMap.Delete(key)
+		log.Printf("Client deleted key %d", key)
 	}
-	defer syncObjs.Close()
-	
-	if MapUpdater(n._type).String() == "UPDATE" {
-		syncObjs.HashMap.Update(n.key, n.value, ebpf.UpdateAny)
-	} else if MapUpdater(n._type).String() == "DELETE" {
-		syncObjs.HashMap.Delete(n.key)
-	}
-
-	n.mu.Unlock()
 
 	return &Empty{}, nil
 }
@@ -74,8 +58,8 @@ func startServer(node *Node, port string) {
 }
 
 func main() {
-	serverIP := flag.String("ip", "localhost", "Server IP address")
-	serverPort := flag.Int("port", 50051, "Server port")
+	serverIP := flag.String("ip", "localhost", "Server IP address of the peer (to sync to)")
+	serverPort := flag.Int("port", 50051, "Current host listen port")
 	flag.Parse()
 	address := *serverIP + ":" + fmt.Sprint(*serverPort)
 
@@ -107,6 +91,9 @@ func main() {
 	}
 	defer fDelete.Close()
 
+	// Update the config map with the server's port and PID.
+	// This is compulsory to prevent the server from sending map updates to itself.
+	// NOTE: this also prevents each server to log eBPF map updates done by the same process that loaded them.
 	var key uint32 = 0
 	config := syncConfig{
 		HostPort: uint16(*serverPort),
@@ -114,16 +101,17 @@ func main() {
 	}
 	err = syncObjs.syncMaps.MapConfig.Update(&key, &config, ebpf.UpdateAny)
 	if err != nil {
-		log.Fatalf("Failed to update proxyMaps map: %v", err)
+		log.Fatalf("Failed to update the map: %v", err)
 	}
+
+	// Spawn the gRPC server to listen for eBPF map updates from neighbours.
+	go startServer(&Node{syncObjs: syncObjs}, ":" + fmt.Sprint(*serverPort))
 
 	rd, err := ringbuf.NewReader(syncObjs.MapEvents)
 	if err != nil {
 		panic(err)
 	}
 	defer rd.Close()
-
-	go startServer(&Node{}, ":50051")
 
 	for {
 		record, err := rd.Read()
@@ -140,23 +128,20 @@ func main() {
 		log.Printf("Key Size: %d", Event.KeySize)
 		log.Printf("Value: %d", Event.Value)
 		log.Printf("Value Size: %d", Event.ValueSize)
-		log.Println("=====================================")
 
 		conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Fatalf("Did not connect: %v", err)
+			log.Fatalf("Failed to connect to peer: %v", err)
 			continue
 		}
-
 		client := NewSyncServiceClient(conn)
-
 		ctx, _ := context.WithTimeout(context.Background(), time.Second)
-
 		_, err = client.SetValue(ctx, &ValueRequest{Key: int32(Event.Key), Value: int32(Event.Value), Type: int32(Event.UpdateType), Mapid: int32(Event.MapID)})
 		if err != nil {
-			log.Printf("Could not set value: %v", err)
+			log.Printf("Could not set value on peer: %v", err)
 		} else {
 			log.Printf("Successfully send sync message")
 		}
+		log.Println("=====================================")
 	}
 }
