@@ -44,22 +44,24 @@ log_map_update(struct bpf_map* updated_map, unsigned int *pKey, unsigned int *pV
   uint32_t value_size = MEM_READ(updated_map->value_size);
  
   // memset the whole struct to ensure verifier is happy
-  struct MapData out_data;
-  __builtin_memset(&out_data, 0, sizeof(out_data));
+  struct MapData *out_data;
 
-  bpf_probe_read_str(out_data.name, BPF_NAME_LEN, updated_map->name);
-  bpf_probe_read(&out_data.key, sizeof(*pKey), pKey);
-  out_data.key_size = key_size;
+  out_data = bpf_ringbuf_reserve(&map_events, sizeof(*out_data), 0);
+	if (!out_data) return;
+
+  bpf_probe_read_str(out_data->name, BPF_NAME_LEN, updated_map->name);
+  bpf_probe_read(&out_data->key, sizeof(*pKey), pKey);
+  out_data->key_size = key_size;
   if (pValue != 0) {
-    bpf_probe_read(&out_data.value, sizeof(*pValue), pValue);
-    out_data.value_size = value_size;
+    bpf_probe_read(&out_data->value, sizeof(*pValue), pValue);
+    out_data->value_size = value_size;
   }
-  out_data.map_id = map_id;
-  out_data.pid = (unsigned int)(bpf_get_current_pid_tgid() >> 32);
-  out_data.update_type = update_type;
+  out_data->map_id = map_id;
+  out_data->pid = (unsigned int)(bpf_get_current_pid_tgid() >> 32);
+  out_data->update_type = update_type;
 
   // Write data to be processed in userspace
-  bpf_ringbuf_output(&map_events, &out_data, sizeof(out_data), 0);
+  bpf_ringbuf_submit(out_data, 0);
 }
 
 SEC("fentry/htab_map_update_elem")
