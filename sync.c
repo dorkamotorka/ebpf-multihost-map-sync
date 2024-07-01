@@ -43,11 +43,12 @@ log_map_update(struct bpf_map* updated_map, unsigned int *pKey, unsigned int *pV
   uint32_t key_size = MEM_READ(updated_map->key_size);
   uint32_t value_size = MEM_READ(updated_map->value_size);
  
-  // memset the whole struct to ensure verifier is happy
   struct MapData *out_data;
-
   out_data = bpf_ringbuf_reserve(&map_events, sizeof(*out_data), 0);
-	if (!out_data) return;
+	if (!out_data) {
+    bpf_printk("Failed to reserve mem in ringbuf\n");
+    return;
+  }
 
   bpf_probe_read_str(out_data->name, BPF_NAME_LEN, updated_map->name);
   bpf_probe_read(&out_data->key, sizeof(*pKey), pKey);

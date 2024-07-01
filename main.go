@@ -14,12 +14,21 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 )
+
+var debug bool = false
+
+var kasp = keepalive.ServerParameters{
+	MaxConnectionIdle:     30 * time.Second, // If a client is idle for 30 seconds, send a GOAWAY
+	Time:                  5 * time.Second,  // Ping the client if it is idle for 5 seconds to ensure the connection is still active
+	Timeout:               1 * time.Second,  // Wait 1 second for the ping ack before assuming the connection is dead
+}
 
 type Node struct {
 	UnimplementedSyncServiceServer
@@ -49,7 +58,7 @@ func startServer(node *Node, port string) {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.KeepaliveParams(kasp))
 	RegisterSyncServiceServer(s, node)
 
 	log.Printf("Server is running at %s", port)
@@ -114,21 +123,26 @@ func main() {
 	}
 	defer rd.Close()
 
+	var avg float32 = 0
 	for {
 		record, err := rd.Read()
 		if err != nil {
 			panic(err)
 		}
 
+		start := time.Now()
 		Event := (*MapData)(unsafe.Pointer(&record.RawSample[0]))
-		log.Printf("Map ID: %d", Event.MapID)
-		log.Printf("Name: %s", string(Event.Name[:]))
-		log.Printf("PID: %d", Event.PID)
-		log.Printf("Update Type: %s", Event.UpdateType.String())
-		log.Printf("Key: %d", Event.Key)
-		log.Printf("Key Size: %d", Event.KeySize)
-		log.Printf("Value: %d", Event.Value)
-		log.Printf("Value Size: %d", Event.ValueSize)
+
+		if debug {
+			log.Printf("Map ID: %d", Event.MapID)
+			log.Printf("Name: %s", string(Event.Name[:]))
+			log.Printf("PID: %d", Event.PID)
+			log.Printf("Update Type: %s", Event.UpdateType.String())
+			log.Printf("Key: %d", Event.Key)
+			log.Printf("Key Size: %d", Event.KeySize)
+			log.Printf("Value: %d", Event.Value)
+			log.Printf("Value Size: %d", Event.ValueSize)
+		}
 
 		conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -140,9 +154,17 @@ func main() {
 		_, err = client.SetValue(ctx, &ValueRequest{Key: int32(Event.Key), Value: int32(Event.Value), Type: int32(Event.UpdateType), Mapid: int32(Event.MapID)})
 		if err != nil {
 			log.Printf("Could not set value on peer: %v", err)
-		} else {
-			log.Printf("Successfully send sync message")
 		}
-		log.Println("=====================================")
+		end := time.Since(start)
+
+		if avg != 0 {
+			avg = (avg + float32(end.Milliseconds())) / float32(2)
+		} else {
+			avg = float32(end.Milliseconds())
+		}
+		if debug { 
+			log.Printf("Average time taken: %f ms", avg)
+			log.Println("=====================================") 
+		}
 	}
 }
