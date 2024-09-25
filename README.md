@@ -1,3 +1,11 @@
+# eBPF Maps State Synchronization across Multi-Node Cluster
+
+When eBPF started gaining popularity, its initial adoption focused primarily on observability, offering developers new ways to monitor and understand their systems. As technology evolved, eBPF’s capabilities expanded significantly. Today, (among other applications) it is widely used for stateful networking solutions such as load balancing, connection tracking, firewalls, and Carrier-Grade NAT (CGNAT).
+
+Deploying these stateful eBPF applications in clusters is essential to avoid single points of failure and ensure high availability. Unlike stateless applications, which do not require synchronization, stateful applications need to maintain consistent state information across all nodes in a cluster like Kubernetes. In stateful applications, state is maintained in the application or in some centralized database but in case of an eBPF application, state or rather information is maintained in the eBPF Maps. And, state of each node needs to be synchronized across the cluster.
+
+But, there are no known synchronization tool or daemon available for eBPF Maps.
+
 Run the program using:
 
 ```
