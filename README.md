@@ -6,13 +6,13 @@ Deploying these stateful eBPF applications in clusters is essential to avoid sin
 
 But, there are no known synchronization tool or daemon available for eBPF Maps.
 
-Run the program using:
+On both host, you need run the program using:
 
 ```
 sudo ./map-sync -ip <IP-of-the-syncing-peer>
 ```
 
-On each host you can trigger actions on eBPF map using:
+On any host from the two you can then simulate/trigger actions on eBPF map using:
 
 ```
 sudo bpftool map
