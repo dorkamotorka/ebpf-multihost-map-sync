@@ -3,14 +3,14 @@ package main
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 -type Config sync sync.c
 
 import (
-	"os"
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net"
+	"os"
 	"time"
 	"unsafe"
-	"fmt"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -25,9 +25,9 @@ import (
 var debug bool = false
 
 var kasp = keepalive.ServerParameters{
-	MaxConnectionIdle:     30 * time.Second, // If a client is idle for 30 seconds, send a GOAWAY
-	Time:                  5 * time.Second,  // Ping the client if it is idle for 5 seconds to ensure the connection is still active
-	Timeout:               1 * time.Second,  // Wait 1 second for the ping ack before assuming the connection is dead
+	MaxConnectionIdle: 30 * time.Second, // If a client is idle for 30 seconds, send a GOAWAY
+	Time:              5 * time.Second,  // Ping the client if it is idle for 5 seconds to ensure the connection is still active
+	Timeout:           1 * time.Second,  // Wait 1 second for the ping ack before assuming the connection is dead
 }
 
 type Node struct {
@@ -39,7 +39,7 @@ func (n *Node) SetValue(ctx context.Context, in *ValueRequest) (*Empty, error) {
 	value := in.GetValue()
 	key := in.GetKey()
 	_type := in.GetType()
-	
+
 	// According to https://man7.org/linux/man-pages/man2/bpf.2.html, these calls are atomic!
 	if MapUpdater(_type).String() == "UPDATE" {
 		n.syncObjs.HashMap.Update(key, value, ebpf.UpdateAny)
@@ -107,7 +107,7 @@ func main() {
 	var key uint32 = 0
 	config := syncConfig{
 		HostPort: uint16(*serverPort),
-		HostPid: uint64(os.Getpid()),
+		HostPid:  uint64(os.Getpid()),
 	}
 	err = syncObjs.syncMaps.MapConfig.Update(&key, &config, ebpf.UpdateAny)
 	if err != nil {
@@ -115,7 +115,7 @@ func main() {
 	}
 
 	// Spawn the gRPC server to listen for eBPF map updates from neighbours.
-	go startServer(&Node{syncObjs: syncObjs}, ":" + fmt.Sprint(*serverPort))
+	go startServer(&Node{syncObjs: syncObjs}, ":"+fmt.Sprint(*serverPort))
 
 	rd, err := ringbuf.NewReader(syncObjs.MapEvents)
 	if err != nil {
@@ -162,9 +162,9 @@ func main() {
 		} else {
 			avg = float32(end.Milliseconds())
 		}
-		if debug { 
+		if debug {
 			log.Printf("Average time taken: %f ms", avg)
-			log.Println("=====================================") 
+			log.Println("=====================================")
 		}
 	}
 }
