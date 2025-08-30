@@ -1,6 +1,7 @@
 package main
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 -type Config sync sync.c
+//go:generate sh -c "bpftool btf dump file /sys/kernel/btf/vmlinux format c >  ./bpf/vmlinux.h"
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target amd64 -type Config sync bpf/sync.c
 
 import (
 	"context"
