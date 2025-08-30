@@ -1,0 +1,3 @@
+src/bpf/vmlinux.h
+src/sync_x86_bpfel.go
+src/sync_x86_bpfel.o
